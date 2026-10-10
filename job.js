@@ -1,8 +1,9 @@
-// job.js — parallel boot/repair/drain. env: ACCS_JSON, TEMPLATE_U, TEMPLATE_P, MODE, TO
+// job.js — parallel boot/repair/drain from store/accs.json. env: MODE, TO, TEMPLATE_U, TEMPLATE_P
+const fs = require('fs');
 const API = 'https://lagoslife.eliysites.com/api';
 const TO = process.env.TO || '';
 const FEE = 50, MIN = 100, SEED = 1096000, CONC = 5;
-const ledger = JSON.parse(process.env.ACCS_JSON || '[]');
+const ledger = JSON.parse(fs.readFileSync('store/accs.json', 'utf8'));
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const jar = res => {
   const all = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie')].filter(Boolean);
@@ -55,7 +56,7 @@ async function worker() {
     if (!a) return;
     try { await one(a); } catch (e) { S.fail++; }
     S.done++;
-    if (S.done % 50 === 0) console.log(`${S.done}/${ledger.length} drained:${S.drained} ₦${S.total.toLocaleString()} repaired:${S.repaired} booted:${S.booted} broke:${S.broke} fail:${S.fail}`);
+    if (S.done % 100 === 0) console.log(`${S.done}/${ledger.length} drained:${S.drained} ₦${S.total.toLocaleString()} repaired:${S.repaired} booted:${S.booted} broke:${S.broke} fail:${S.fail}`);
     await sleep(150);
   }
 }
