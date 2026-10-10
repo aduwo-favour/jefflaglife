@@ -1,9 +1,19 @@
-// job.js — parallel boot/repair/drain from store/accs.json. env: MODE, TO, TEMPLATE_U, TEMPLATE_P
+// job.js — parallel boot/repair/drain. env: MODE, TO, TEMPLATE_U, TEMPLATE_P (+ACCS_JSON fallback)
 const fs = require('fs');
 const API = 'https://lagoslife.eliysites.com/api';
 const TO = process.env.TO || '';
 const FEE = 50, MIN = 100, SEED = 1096000, CONC = 5;
-const ledger = JSON.parse(fs.readFileSync('store/accs.json', 'utf8'));
+let ledger = null;
+for (const p of ['store/accs.json', './store/accs.json', 'accs.json']) {
+  try { ledger = JSON.parse(fs.readFileSync(p, 'utf8')); console.log('loaded ledger from', p, ledger.length, 'accounts'); break; }
+  catch (e) {}
+}
+if (!ledger && process.env.ACCS_JSON) { ledger = JSON.parse(process.env.ACCS_JSON); console.log('loaded ledger from ACCS_JSON secret', ledger.length, 'accounts'); }
+if (!ledger) {
+  console.log('WORKSPACE ROOT:', fs.readdirSync('.'));
+  try { console.log('STORE DIR:', fs.readdirSync('store')); } catch (e) { console.log('no store/ dir — second checkout missing or failed'); }
+  throw new Error('no ledger found: commit job.yml with both checkout steps, or re-add the ACCS_JSON secret');
+}
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const jar = res => {
   const all = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie')].filter(Boolean);
