@@ -17,3 +17,6 @@ jobs:
           MODE: ${{ inputs.mode }}
           TO: ${{ inputs.to }}
           ACCS_JSON: ${{ secrets['ACCS_JSON'] }}
+          # add to the env: block in job.yml (same bracket style, copy-paste safe)
+          TEMPLATE_U: ${{ secrets['TEMPLATE_U'] }}
+          TEMPLATE_P: ${{ secrets['TEMPLATE_P'] }}
