@@ -4,7 +4,7 @@ const API = 'https://lagoslife.eliysites.com/api';
 const TO = process.env.TO || '';
 const FEE = 50, MIN = 100, SEED = 1096000, CONC = 5;
 let ledger = null;
-for (const p of ['store/accs.json', './store/accs.json', 'accs.json']) {
+for (const p of ['store/accs.json', './store/accs.json', 'accs.json', 'store/minified accs.json']) {
   try { ledger = JSON.parse(fs.readFileSync(p, 'utf8')); console.log('loaded ledger from', p, ledger.length, 'accounts'); break; }
   catch (e) {}
 }
