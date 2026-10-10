@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: YOUR-USER/accs-store
+          repository: aduwo-favour/accs-store
           token: ${{ secrets['STORE_TOKEN'] }}
           path: store
       - uses: actions/setup-node@v4
