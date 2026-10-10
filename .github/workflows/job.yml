@@ -1,0 +1,20 @@
+# 2. repo file: .github/workflows/job.yml — the clickable button
+name: money-job
+on:
+  workflow_dispatch:
+    inputs:
+      mode: { description: 'seed or drain', default: 'drain' }
+      to: { description: 'target id (drain only)', default: '' }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node job.js
+        env:
+          MODE: ${{ inputs.mode }}
+          TO: ${{ inputs.to }}
+          ACCS_JSON: ${{ secrets.ACC S_JSON }}
