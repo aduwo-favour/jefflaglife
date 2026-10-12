@@ -1,4 +1,4 @@
-// repo file: move.js (next to job.js)
+// repo file: move.js — move all ledger accounts to pollingUnit (GitHub Actions)
 const fs = require('fs');
 const API = 'https://lagoslife.eliysites.com/api';
 const CONC = 5;
