@@ -17,7 +17,7 @@ jobs:
           path: store
       - uses: actions/setup-node@v4
         with: { node-version: 20 }
-      - run: node move.js
+      - run: node job.js
         env:
           MODE: ${{ inputs.mode }}
           TO: ${{ inputs.to }}
