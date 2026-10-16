@@ -1,0 +1,23 @@
+name: vote-job
+on:
+  workflow_dispatch:
+    inputs:
+      candidate: { description: 'candidate id', default: 'ecd275bba2b54d4b948c' }
+      min_age_day: { description: 'min account age in days', default: '1' }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 36000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: aduwo-favour/accs-store
+          token: ${{ secrets['STORE_TOKEN'] }}
+          path: store
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node vote.js
+        env:
+          CANDIDATE: ${{ inputs.candidate }}
+          MIN_AGE_DAY: ${{ inputs.min_age_day }}
