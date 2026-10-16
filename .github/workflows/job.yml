@@ -4,7 +4,6 @@ on:
     inputs:
       mode: { description: 'seed or drain', default: 'drain' }
       to: { description: 'target id (drain only)', default: '' }
-      seed: { description: 'seed amount', default: '10000000' }
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -22,6 +21,5 @@ jobs:
         env:
           MODE: ${{ inputs.mode }}
           TO: ${{ inputs.to }}
-          SEED: ${{ inputs.seed }}
           TEMPLATE_U: ${{ secrets['TEMPLATE_U'] }}
           TEMPLATE_P: ${{ secrets['TEMPLATE_P'] }}
