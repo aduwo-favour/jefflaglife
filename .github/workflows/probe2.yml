@@ -1,0 +1,20 @@
+name: probe2
+on:
+  workflow_dispatch:
+    inputs:
+      u: { description: 'probe username (e.g. ibrahimnwankwo)', default: 'ibrahimnwankwo' }
+      p: { description: 'probe password', default: '' }
+      seed: { description: 'seed amount', default: '10000000' }
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node probe2.js
+        env:
+          U: ${{ inputs.u }}
+          P: ${{ inputs.p }}
+          SEED: ${{ inputs.seed }}
