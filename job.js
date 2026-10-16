@@ -1,4 +1,4 @@
-// job.js — parallel boot/repair/drain. env: MODE, TO, SEED, TEMPLATE_U, TEMPLATE_P (+ACCS_JSON fallback)
+// job.js — parallel boot/repair/drain. env: TO, SEED, TEMPLATE_U, TEMPLATE_P (+ACCS_JSON fallback)
 const fs = require('fs');
 const API = 'https://lagoslife.eliysites.com/api';
 const TO = process.env.TO || '';
@@ -21,54 +21,84 @@ const jar = res => {
   const all = res.headers.getSetCookie ? res.headers.getSetCookie() : [res.headers.get('set-cookie')].filter(Boolean);
   return all.map(c => c.split(';')[0]).join('; ');
 };
-const baseOf = sv => sv.base ?? sv.updatedAt ?? sv.now ?? Date.now();
+// base token: prefer top-level base, then game.version, then timestamps
+const baseOf = sv => sv.base ?? sv.updatedAt ?? sv.now ?? sv.game?.version ?? Date.now();
 const login = async (u, p) => {
   const r = await fetch(`${API}/auth/login`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: u, password: p }) });
   return r.ok ? { 'content-type': 'application/json', 'cookie': jar(r) } : null;
 };
 const S = { booted: 0, repaired: 0, drained: 0, broke: 0, repairFail: 0, fail: 0, total: 0, done: 0 };
 const ERR = [];
-const note = (m) => { if (ERR.length < 10) ERR.push(m); if (ERR.length <= 5) console.log('ERR:', m); };
+let debugDone = false;
+const note = (m) => { if (ERR.length < 10) ERR.push(m); if (ERR.length <= 8) console.log('ERR:', m); };
 let cursor = 0, clean = null;
+
+// PUT with retry off the server's own 409 body. returns { ok, sv } where sv is fresh state.
+async function sturdyPut(H, cookie, curSv, mutate, tag) {
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const g = JSON.parse(JSON.stringify(curSv.game));
+    mutate(g);
+    const base = baseOf(curSv);
+    // bump version on odd attempts — server may require version+1
+    if (attempt % 2 === 1) g.version = (curSv.game?.version ?? 0) + 1;
+    const r = await fetch(`${API}/save`, { method: 'PUT', headers: H, body: JSON.stringify({ game: g, base }) });
+    if (r.ok) {
+      if (attempt > 0) console.log(`${tag} put ok on attempt ${attempt} (bump=${attempt % 2 === 1})`);
+      return { ok: true, sv: await fetch(`${API}/save?t=${Date.now()}`, { headers: { cookie } }).then(x => x.json()).catch(() => null) };
+    }
+    const t = await r.text().catch(() => '');
+    let j = null; try { j = JSON.parse(t); } catch {}
+    if (!debugDone) {
+      debugDone = true;
+      console.log('DEBUG get keys:', Object.keys(curSv), '| base:', JSON.stringify(curSv.base), '| updatedAt:', curSv.updatedAt, '| now:', curSv.now, '| game.version:', curSv.game?.version);
+      console.log('DEBUG 409 keys:', j ? Object.keys(j) : '(non-json)', '| 409 base:', j ? JSON.stringify(j.base) : '?', '| 409 updatedAt:', j?.updatedAt, '| 409 game.version:', j?.game?.version);
+    }
+    if (r.status === 409 && j?.game) {
+      curSv = { ...j, game: j.game };
+      if (curSv.base === undefined && j.base === undefined) curSv.base = base; // keep last base if server sends none
+      await sleep(500);
+      continue;
+    }
+    return { ok: false, status: r.status, body: t };
+  }
+  return { ok: false, status: 409, body: 'retry exhausted' };
+}
+
 async function one(a) {
   const H = await login(a.u, a.p);
   if (!H) { S.fail++; return; }
-  const get = async () => fetch(`${API}/save?t=${Date.now()}`, { headers: { cookie: H.cookie } }).then(r => r.json());
-  const put = (game, base) => fetch(`${API}/save`, { method: 'PUT', headers: H, body: JSON.stringify({ game, base }) });
+  const cookie = H.cookie;
+  const get = async () => fetch(`${API}/save?t=${Date.now()}`, { headers: { cookie } }).then(r => r.json());
   let sv = await get();
   if (!sv?.game && clean) {
     const g = JSON.parse(JSON.stringify(clean));
     g.sim.name = a.u;
-    if ((await put(g, baseOf(sv))).ok) { S.booted++; await sleep(100); sv = await get(); }
-    else { S.fail++; note('BOOT ' + a.u); return; }
+    const pr = await sturdyPut(H, cookie, { ...sv, game: g }, () => {}, 'BOOT ' + a.u);
+    if (pr.ok) { S.booted++; await sleep(100); sv = pr.sv || await get(); }
+    else { S.fail++; note('BOOT ' + a.u + ' ' + pr.status + ' ' + String(pr.body).slice(0, 120)); return; }
   }
   if (!sv?.game) { S.fail++; note('NOGAME ' + a.u); return; }
+  if (sv.game?.sim?.name && sv.game.sim.name !== a.u) {
+    // save slot holds a stranger's sim — realign before money write
+    const fix = await sturdyPut(H, cookie, sv, g => { g.sim.name = a.u; }, 'RENAME ' + a.u);
+    if (fix.ok && fix.sv?.game) sv = fix.sv;
+    else { S.fail++; note('RENAME ' + a.u + ' sim=' + sv.game.sim.name + ' ' + fix.status + ' ' + String(fix.body).slice(0, 120)); return; }
+  }
   if (Number(sv.game.money) < MIN + FEE) {
     const old = Number(sv.game.money ?? 0);
-    const g = JSON.parse(JSON.stringify(sv.game));
-    g.money = SEED;
-    g.ledger = g.ledger || [];
-    g.ledger.push({ id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), k: 'admin.seed', a: SEED - old, t: Date.now(), r: 'seed' });
-    g.outbox = g.outbox || { notices: [], fx: [] };
-    let rr = await put(g, baseOf(sv));
-    if (rr.status === 409) {
-      // stale base — refetch once and retry with fresh base
-      await sleep(500);
-      sv = await get();
-      const g2 = JSON.parse(JSON.stringify(sv.game));
-      const old2 = Number(g2.money ?? 0);
-      g2.money = SEED;
-      g2.ledger = g2.ledger || [];
-      g2.ledger.push({ id: Date.now().toString(36) + 'r', k: 'admin.seed', a: SEED - old2, t: Date.now(), r: 'seed-retry' });
-      rr = await put(g2, baseOf(sv));
-    }
-    if (!rr.ok) {
-      const t = await rr.text().catch(() => '');
+    const pr = await sturdyPut(H, cookie, sv, g => {
+      g.money = SEED;
+      g.ledger = g.ledger || [];
+      g.ledger.push({ id: Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), k: 'admin.seed', a: SEED - old, t: Date.now(), r: 'seed' });
+      g.outbox = g.outbox || { notices: [], fx: [] };
+    }, 'REPAIR ' + a.u);
+    if (!pr.ok) {
       S.repairFail++; S.broke++;
-      note('REPAIR ' + a.u + ' money=' + old + ' ' + rr.status + ' ' + t.slice(0, 120));
+      note('REPAIR ' + a.u + ' money=' + old + ' ' + pr.status + ' ' + String(pr.body).slice(0, 160));
       return;
     }
-    S.repaired++; await sleep(100); sv = await get();
+    S.repaired++; await sleep(100);
+    sv = pr.sv || await get();
   }
   let amount = Math.floor(Number(sv.game.money ?? 0)) - FEE;
   if (amount < MIN) { S.broke++; note('STILLBROKE ' + a.u + ' money=' + sv.game.money); return; }
